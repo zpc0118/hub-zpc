@@ -1,0 +1,14 @@
+# 预训练模型权重，不上传仓库
+*/bert-base-chinese/
+*.bin
+*.msgpack
+*.h5
+*.ckpt
+*.safetensors
+pretrain_models/
+models/
+# Mac 缓存
+.DS_Store
+# Python 缓存
+__pycache__
+*.pyc
