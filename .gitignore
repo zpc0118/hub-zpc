@@ -17,3 +17,4 @@ parsed/
 outputs/
 checkpoints/
 .DS_Store
+*.safetensors
