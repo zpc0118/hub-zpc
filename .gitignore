@@ -18,3 +18,5 @@ outputs/
 checkpoints/
 .DS_Store
 *.safetensors
+.idea/
+.DS_Store
