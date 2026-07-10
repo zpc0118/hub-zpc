@@ -1,0 +1,146 @@
+{
+  "version": "1.0",
+  "description": "年报 RAG 系统评测题集（20题），覆盖格力电器、恒瑞医药、比亚迪、长江电力、顺丰控股 2022-2024 年报",
+  "questions": [
+    {
+      "id": 1,
+      "type": "simple_fact",
+      "difficulty": 1,
+      "question": "格力电器2023年的营业收入是多少？",
+      "target_docs": ["000651_2023"]
+    },
+    {
+      "id": 2,
+      "type": "simple_fact",
+      "difficulty": 1,
+      "question": "长江电力2022年归属于母公司净利润是多少？",
+      "target_docs": ["600900_2022"]
+    },
+    {
+      "id": 3,
+      "type": "simple_fact",
+      "difficulty": 1,
+      "question": "顺丰控股2024年的营业收入是多少？",
+      "target_docs": ["002352_2024"]
+    },
+    {
+      "id": 4,
+      "type": "simple_fact",
+      "difficulty": 1,
+      "question": "比亚迪2022年的营业收入是多少？",
+      "target_docs": ["002594_2022"]
+    },
+    {
+      "id": 5,
+      "type": "simple_fact",
+      "difficulty": 1,
+      "question": "恒瑞医药2024年的营业收入是多少？",
+      "target_docs": ["600276_2024"]
+    },
+    {
+      "id": 6,
+      "type": "precise_number",
+      "difficulty": 2,
+      "question": "格力电器2023年空调产品的毛利率是多少？",
+      "target_docs": ["000651_2023"]
+    },
+    {
+      "id": 7,
+      "type": "precise_number",
+      "difficulty": 2,
+      "question": "比亚迪2023年归属于上市公司股东的净利润是多少亿元？",
+      "target_docs": ["002594_2023"]
+    },
+    {
+      "id": 8,
+      "type": "precise_number",
+      "difficulty": 2,
+      "question": "恒瑞医药2022年的研发投入金额是多少？",
+      "target_docs": ["600276_2022"]
+    },
+    {
+      "id": 9,
+      "type": "precise_number",
+      "difficulty": 2,
+      "question": "顺丰控股2023年实现归属于上市公司股东的净利润是多少？",
+      "target_docs": ["002352_2023"]
+    },
+    {
+      "id": 10,
+      "type": "precise_number",
+      "difficulty": 2,
+      "question": "长江电力2024年的基本每股收益是多少元？",
+      "target_docs": ["600900_2024"]
+    },
+    {
+      "id": 11,
+      "type": "cross_doc_compare",
+      "difficulty": 3,
+      "question": "比较比亚迪和格力电器2023年的毛利率，哪家公司更高？分别是多少？",
+      "target_docs": ["002594_2023", "000651_2023"]
+    },
+    {
+      "id": 12,
+      "type": "cross_doc_compare",
+      "difficulty": 3,
+      "question": "2024年格力电器和长江电力的营业收入分别是多少？哪家更高？",
+      "target_docs": ["000651_2024", "600900_2024"]
+    },
+    {
+      "id": 13,
+      "type": "cross_doc_compare",
+      "difficulty": 3,
+      "question": "比亚迪2023年和顺丰控股2024年的研发费用分别是多少？哪家投入更多？",
+      "target_docs": ["002594_2023", "002352_2024"]
+    },
+    {
+      "id": 14,
+      "type": "cross_doc_compare",
+      "difficulty": 3,
+      "question": "恒瑞医药和长江电力在各自2022年年报中，哪家公司的净利润更高？",
+      "target_docs": ["600276_2022", "600900_2022"]
+    },
+    {
+      "id": 15,
+      "type": "time_trend",
+      "difficulty": 3,
+      "question": "格力电器2022年至2024年营业收入的变化趋势如何？",
+      "target_docs": ["000651_2022", "000651_2023", "000651_2024"]
+    },
+    {
+      "id": 16,
+      "type": "time_trend",
+      "difficulty": 3,
+      "question": "比亚迪2022年到2024年净利润的变化趋势如何？",
+      "target_docs": ["002594_2022", "002594_2023", "002594_2024"]
+    },
+    {
+      "id": 17,
+      "type": "time_trend",
+      "difficulty": 3,
+      "question": "顺丰控股2022年至2024年的营业收入增长情况如何？",
+      "target_docs": ["002352_2022", "002352_2023", "002352_2024"]
+    },
+    {
+      "id": 18,
+      "type": "should_refuse",
+      "difficulty": 1,
+      "question": "格力电器今天的股价是多少？适合买入吗？",
+      "target_docs": []
+    },
+    {
+      "id": 19,
+      "type": "should_refuse",
+      "difficulty": 1,
+      "question": "比亚迪CEO王传福的个人资产有多少？",
+      "target_docs": []
+    },
+    {
+      "id": 20,
+      "type": "should_refuse",
+      "difficulty": 2,
+      "question": "长江电力未来五年的分红计划是什么？每年会派多少钱？",
+      "target_docs": []
+    }
+  ]
+}

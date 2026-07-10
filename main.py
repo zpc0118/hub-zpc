@@ -15,4 +15,10 @@ if __name__ == '__main__':
     print_hi('PyCharm')
 
 # 访问 https://www.jetbrains.com/help/pycharm/ 获取 PyCharm 帮助
+'''
 
+如果文字>50,没有图片怎么处理的，
+
+
+
+'''
