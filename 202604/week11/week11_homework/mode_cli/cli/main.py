@@ -31,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.rag_backend import search_annual_report, list_companies  # noqa: E402
-from src.weather_backend import get_weather  # noqa: E402
+from src.weather_backend import geocode, get_weather_by_coords  # noqa: E402
 
 
 def main():
@@ -52,9 +52,15 @@ def main():
     # fincli list-companies
     sub.add_parser("list-companies", help="列出知识库收录的公司")
 
-    # fincli weather ...
-    p_weather = sub.add_parser("weather", help="查询城市天气")
-    p_weather.add_argument("--city", required=True, help="城市中文名，如 宁德")
+    # fincli geocode ...
+    p_geocode = sub.add_parser("geocode", help="城市名→经纬度")
+    p_geocode.add_argument("--city", required=True, help="城市中文名，如 宁德")
+
+    # fincli weather-by-coords ...
+    p_wbc = sub.add_parser("weather-by-coords", help="经纬度→天气")
+    p_wbc.add_argument("--lat", type=float, required=True, help="纬度")
+    p_wbc.add_argument("--lon", type=float, required=True, help="经度")
+    p_wbc.add_argument("--location-name", default="", help="可选，地名用于天气报告标题")
 
     args = parser.parse_args()
 
@@ -62,8 +68,10 @@ def main():
         print(search_annual_report(args.query, args.stock_code, args.year, args.top_k))
     elif args.cmd == "list-companies":
         print(list_companies())
-    elif args.cmd == "weather":
-        print(get_weather(args.city))
+    elif args.cmd == "geocode":
+        print(geocode(args.city))
+    elif args.cmd == "weather-by-coords":
+        print(get_weather_by_coords(args.lat, args.lon, args.location_name))
 
 
 if __name__ == "__main__":

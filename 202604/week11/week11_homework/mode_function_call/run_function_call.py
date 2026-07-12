@@ -41,7 +41,7 @@ from openai import OpenAI
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.rag_backend import search_annual_report, list_companies  # noqa: E402
-from src.weather_backend import get_weather  # noqa: E402
+from src.weather_backend import geocode, get_weather_by_coords  # noqa: E402
 
 # ── LLM 配置 ───────────────────────────────────────────────────────────────
 
@@ -122,14 +122,40 @@ TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
-            "name": "get_weather",
-            "description": "查询指定城市的当前天气及未来3天预报。城市用中文名，如 '宁德'、'北京'。",
+            "name": "geocode",
+            "description": (
+                "将城市名转换为经纬度坐标。返回坐标文本，含经纬度和完整地名。"
+                "注意：这是查询天气的第一步，拿到坐标后还需要调用 get_weather_by_coords 获取天气。"
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "city": {"type": "string", "description": "城市中文名，如 '宁德'"},
+                    "city": {"type": "string", "description": "城市中文名，如 '宁德'、'北京'"},
                 },
                 "required": ["city"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather_by_coords",
+            "description": (
+                "根据经纬度坐标查询当前天气及未来3天预报。"
+                "注意：这是查询天气的第二步，需要先通过 geocode 获取坐标。"
+                "location_name 可传入 geocode 返回的地名，用于天气报告标题。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "lat": {"type": "number", "description": "纬度，来自 geocode 返回结果"},
+                    "lon": {"type": "number", "description": "经度，来自 geocode 返回结果"},
+                    "location_name": {
+                        "type": "string",
+                        "description": "可选，geocode 返回的完整地名，如 '中国 福建省 宁德市'",
+                    },
+                },
+                "required": ["lat", "lon"],
             },
         },
     },
@@ -142,23 +168,30 @@ TOOLS_SCHEMA = [
 TOOL_DISPATCH = {
     "search_annual_report": search_annual_report,
     "list_companies": list_companies,
-    "get_weather": get_weather,
+    "geocode": geocode,
+    "get_weather_by_coords": get_weather_by_coords,
 }
 
 
-# ── 单轮闭环 ───────────────────────────────────────────────────────────────
+# ── 多轮 ReAct ─────────────────────────────────────────────────────────────
+
+MAX_ROUNDS = 5
 
 SYSTEM_PROMPT = (
     "你是一名金融分析助手。回答用户关于A股年报的问题时，必须先调用 search_annual_report 工具检索年报原文，"
     "只依据工具返回的段落作答，不要编造数据。如果用户问的公司不在知识库"
     "（贵州茅台/五粮液/宁德时代/海康威视/中国平安），请明确告知不在库内，不要臆测。"
-    "涉及天气时调用 get_weather。本回合你可以一次调用多个工具。"
+    "涉及天气时，必须分两步调用：第一步 geocode(city) 获取城市经纬度，"
+    "第二步 get_weather_by_coords(lat, lon, location_name) 获取天气。"
+    "注意：get_weather_by_coords 依赖 geocode 的结果，不要在同一轮并行调用这两个工具，"
+    "必须先拿到 geocode 返回的坐标，在下一轮再调用 get_weather_by_coords。"
+    "你可以跨多轮调用工具，不必一次全调完。同一轮内可并行调用互相独立的工具。"
 )
 
 
 def run(client, model: str, question: str, verbose: bool = True) -> dict:
     """
-    单轮闭环：提问 → 模型输出 tool_call → 执行 → 回填 → 最终回答。
+    多轮 ReAct：提问 → 模型输出 tool_call → 执行 → 回填 → 循环，直到模型不再调工具。
     返回 {answer, tool_calls, elapsed} 用于对比器汇总。
     """
     messages = [
@@ -167,18 +200,26 @@ def run(client, model: str, question: str, verbose: bool = True) -> dict:
     ]
     t0 = time.time()
     tool_call_log = []
+    round_count = 0
+    msg = None
 
-    # 第一次请求：带上 tools，让模型决定是否调用工具
-    resp = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        tools=TOOLS_SCHEMA,
-        tool_choice="auto",
-    )
-    msg = resp.choices[0].message
+    while round_count < MAX_ROUNDS:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            tools=TOOLS_SCHEMA,
+            tool_choice="auto",
+        )
+        msg = resp.choices[0].message
 
-    # 【教学时刻 3】：模型输出了 tool_calls → 逐个执行后端函数
-    if msg.tool_calls:
+        if not msg.tool_calls:
+            # LLM 决定不调工具了 → 循环结束，msg.content 即最终回答
+            break
+
+        round_count += 1
+        if verbose:
+            print(f"  [Round {round_count}] LLM 调用了 {len(msg.tool_calls)} 个工具")
+
         # 把 assistant 这条带 tool_calls 的消息原样回填，保持上下文
         messages.append(msg)
         for tc in msg.tool_calls:
@@ -192,7 +233,6 @@ def run(client, model: str, question: str, verbose: bool = True) -> dict:
                 result = f"未知工具：{name}"
             else:
                 try:
-                    # 工具执行！！
                     result = fn(**args)
                 except TypeError as e:
                     result = f"参数错误：{e}"
@@ -208,19 +248,25 @@ def run(client, model: str, question: str, verbose: bool = True) -> dict:
                 "content": result,
             })
 
-        # 第二次请求：模型看到工具结果，生成最终回答（不再调用工具）
+    # max_rounds 用完但 LLM 还在要工具 → 强制要求基于现有信息回答
+    if round_count >= MAX_ROUNDS and msg and msg.tool_calls:
+        if verbose:
+            print("  ⚠ 达到最大轮次，强制 LLM 基于现有信息回答")
+        messages.append({
+            "role": "user",
+            "content": "请基于现有工具结果直接回答用户问题，不要再调用工具。",
+        })
         resp = client.chat.completions.create(
             model=model,
             messages=messages,
-            tools=TOOLS_SCHEMA,
-            tool_choice="auto",
+            tool_choice="none",
         )
         msg = resp.choices[0].message
 
-    answer = msg.content or ""
+    answer = (msg.content or "") if msg else ""
     elapsed = time.time() - t0
     if verbose:
-        print(f"  → [llm] 最终回答（{elapsed:.1f}s）")
+        print(f"  → [llm] 最终回答（{elapsed:.1f}s, {round_count} 轮, {len(tool_call_log)} 次工具调用）")
     return {"answer": answer, "tool_calls": tool_call_log, "elapsed": elapsed}
 
 

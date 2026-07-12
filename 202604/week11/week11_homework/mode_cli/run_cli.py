@@ -95,9 +95,13 @@ NAMED_COMMANDS = {
         "argv": FINCLI_ARGV + ["list-companies"],
         "arg_map": {},
     },
-    "weather": {
-        "argv": FINCLI_ARGV + ["weather"],
+    "geocode": {
+        "argv": FINCLI_ARGV + ["geocode"],
         "arg_map": {"city": "--city"},
+    },
+    "weather_by_coords": {
+        "argv": FINCLI_ARGV + ["weather-by-coords"],
+        "arg_map": {"lat": "--lat", "lon": "--lon", "location_name": "--location-name"},
     },
 }
 
@@ -196,7 +200,9 @@ NAMED_TOOLS_SCHEMA = [
             "name": "run_cli",
             "description": (
                 "执行预批准的命令行工具。command 只能取白名单内的值。"
-                "可查 A 股年报（rag_search/list_companies）和天气（weather）。"
+                "可查 A 股年报（rag_search/list_companies）和天气（geocode/weather_by_coords）。"
+                "注意：查天气必须分两步，先 geocode 获取坐标，再 weather_by_coords 获取天气，"
+                "不要在同一轮并行调用这两个。"
             ),
             "parameters": {
                 "type": "object",
@@ -206,11 +212,13 @@ NAMED_TOOLS_SCHEMA = [
                         "enum": list(NAMED_COMMANDS.keys()),
                         "description": "rag_search（查年报，需 query+可选 stock_code/year/top_k）/"
                                        " rag_list_companies（列公司）/"
-                                       " weather（查天气，需 city）",
+                                       " geocode（城市→坐标，需 city）/"
+                                       " weather_by_coords（坐标→天气，需 lat/lon/可选 location_name）",
                     },
                     "args": {
                         "type": "object",
-                        "description": "命令参数。rag_search: {query, stock_code?, year?, top_k?}; weather: {city}",
+                        "description": "命令参数。rag_search: {query, stock_code?, year?, top_k?}; "
+                                       "geocode: {city}; weather_by_coords: {lat, lon, location_name?}",
                     },
                 },
                 "required": ["command"],
@@ -229,7 +237,8 @@ BASH_TOOLS_SCHEMA = [
                 "可用工具 fincli（一条真实命令）："
                 "fincli search --query '营收和净利润' --stock-code 300750 --year 2023 --top-k 3；"
                 "fincli list-companies；"
-                "fincli weather --city 宁德。"
+                "查天气分两步：fincli geocode --city 宁德 → fincli weather-by-coords --lat 26.66 --lon 119.55。"
+                "注意：weather-by-coords 依赖 geocode 的结果，不要在同一轮并行调用，先获取坐标再查天气。"
                 "危险命令（rm/del/format/sudo/curl|sh 等）会被拦截；只允许白名单可执行文件。"
             ),
             "parameters": {
@@ -250,14 +259,20 @@ MODE_DISPATCH = {
 }
 
 
-# ── 单轮闭环 ───────────────────────────────────────────────────────────────
+MAX_ROUNDS = 5
+
+# ── 多轮 ReAct ─────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT_NAMED = (
     "你是一名金融分析助手。通过 run_cli 工具调用预批准命令查 A 股年报与天气。"
     "回答年报问题前必须先 run_cli(command='rag_search', args={...}) 检索原文，只依据返回段落作答，不要编造。"
     "知识库仅含：贵州茅台(600519)/五粮液(000858)/宁德时代(300750)/海康威视(002415)/中国平安(601318)，年份 2021-2023。"
     "rag_search 的 query 不要含公司名/年份（已由 stock_code/year 过滤），用简短术语如 '营收和净利润'。"
-    "不在库内的公司请明确告知，不要臆测。本回合可一次调用多个工具。"
+    "不在库内的公司请明确告知，不要臆测。"
+    "涉及天气时，必须分两步：先 run_cli(command='geocode', args={city}) 获取坐标，"
+    "再 run_cli(command='weather_by_coords', args={lat, lon, ...}) 获取天气。"
+    "这两个命令不要在同一轮并行调用，必须先拿到 geocode 结果，再下一轮调 weather_by_coords。"
+    "你可以跨多轮调用工具，不必一次全调完。"
 )
 
 SYSTEM_PROMPT_BASH = (
@@ -265,13 +280,16 @@ SYSTEM_PROMPT_BASH = (
     "查年报：fincli search --query '营收和净利润' --stock-code 300750 --year 2023 --top-k 3"
     "（query 不要含公司名/年份，用简短财务术语）。"
     "列公司：fincli list-companies。"
-    "查天气：fincli weather --city 南京。"
+    "查天气分两步：先用 fincli geocode --city 南京 获取坐标，"
+    "再用 fincli weather-by-coords --lat 32.06 --lon 118.79 获取天气。"
+    "这两个命令不要在同一轮并行调用，geocode 的结果中的经纬度在下一轮传给 weather-by-coords。"
     "回答必须依据命令返回的原文，不要编造。知识库仅含 5 家公司（茅台/五粮液/宁德时代/海康威视/中国平安），"
-    "不在库内的明确告知。本回合可一次调用多个工具。"
+    "不在库内的明确告知。你可以跨多轮调用工具。"
 )
 
 
 def run(client, model: str, question: str, mode: str, verbose: bool = True) -> dict:
+    """多轮 ReAct：提问 → 模型输出 tool_call → 执行 → 回填 → 循环，直到模型不再调工具。"""
     tools_schema, executor = MODE_DISPATCH[mode]
     sys_prompt = SYSTEM_PROMPT_NAMED if mode == "named" else SYSTEM_PROMPT_BASH
 
@@ -281,13 +299,22 @@ def run(client, model: str, question: str, mode: str, verbose: bool = True) -> d
     ]
     t0 = time.time()
     tool_call_log = []
+    round_count = 0
+    msg = None
 
-    resp = client.chat.completions.create(
-        model=model, messages=messages, tools=tools_schema, tool_choice="auto",
-    )
-    msg = resp.choices[0].message
+    while round_count < MAX_ROUNDS:
+        resp = client.chat.completions.create(
+            model=model, messages=messages, tools=tools_schema, tool_choice="auto",
+        )
+        msg = resp.choices[0].message
 
-    if msg.tool_calls:
+        if not msg.tool_calls:
+            break
+
+        round_count += 1
+        if verbose:
+            print(f"  [Round {round_count}] LLM 调用了 {len(msg.tool_calls)} 个工具")
+
         messages.append(msg)
         for tc in msg.tool_calls:
             args = json.loads(tc.function.arguments or "{}")
@@ -305,15 +332,23 @@ def run(client, model: str, question: str, mode: str, verbose: bool = True) -> d
                 "role": "tool", "tool_call_id": tc.id, "content": result,
             })
 
+    # max_rounds 用完但 LLM 还在要工具 → 强制要求基于现有信息回答
+    if round_count >= MAX_ROUNDS and msg and msg.tool_calls:
+        if verbose:
+            print("  ⚠ 达到最大轮次，强制 LLM 基于现有信息回答")
+        messages.append({
+            "role": "user",
+            "content": "请基于现有工具结果直接回答用户问题，不要再调用工具。",
+        })
         resp = client.chat.completions.create(
-            model=model, messages=messages, tools=tools_schema, tool_choice="auto",
+            model=model, messages=messages, tool_choice="none",
         )
         msg = resp.choices[0].message
 
-    answer = msg.content or ""
+    answer = (msg.content or "") if msg else ""
     elapsed = time.time() - t0
     if verbose:
-        print(f"  → [llm] 最终回答（{elapsed:.1f}s）")
+        print(f"  → [llm] 最终回答（{elapsed:.1f}s, {round_count} 轮, {len(tool_call_log)} 次工具调用）")
     return {"answer": answer, "tool_calls": tool_call_log, "elapsed": elapsed}
 
 

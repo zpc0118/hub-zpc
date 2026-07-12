@@ -128,27 +128,42 @@ SYSTEM_PROMPT = (
     "你是一名金融分析助手。回答用户关于A股年报的问题时，必须先调用 search_annual_report 工具检索年报原文，"
     "只依据工具返回的段落作答，不要编造数据。如果用户问的公司不在知识库"
     "（贵州茅台/五粮液/宁德时代/海康威视/中国平安），请明确告知不在库内，不要臆测。"
-    "涉及天气时调用 get_weather。本回合你可以一次调用多个工具。"
+    "涉及天气时，必须分两步调用：第一步 geocode(city) 获取城市经纬度，"
+    "第二步 get_weather_by_coords(lat, lon, location_name) 获取天气。"
+    "注意：get_weather_by_coords 依赖 geocode 的结果，不要在同一轮并行调用这两个工具，"
+    "必须先拿到 geocode 返回的坐标，在下一轮再调用 get_weather_by_coords。"
+    "你可以跨多轮调用工具，不必一次全调完。同一轮内可并行调用互相独立的工具。"
 )
+
+
+MAX_ROUNDS = 5
 
 
 async def run(client, model: str, question: str,
               tool_registry: dict, openai_tools: list[dict], verbose: bool = True) -> dict:
-    """单轮闭环：提问 → 模型输出 tool_call → 路由到 Server 执行 → 回填 → 最终回答。"""
+    """多轮 ReAct：提问 → 模型输出 tool_call → 路由到 Server 执行 → 回填 → 循环，直到模型不再调工具。"""
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": question},
     ]
     t0 = time.time()
     tool_call_log = []
+    round_count = 0
+    msg = None
 
-    # 第一次请求：带上 tools，让模型决定是否调用工具
-    resp = client.chat.completions.create(
-        model=model, messages=messages, tools=openai_tools, tool_choice="auto",
-    )
-    msg = resp.choices[0].message
+    while round_count < MAX_ROUNDS:
+        resp = client.chat.completions.create(
+            model=model, messages=messages, tools=openai_tools, tool_choice="auto",
+        )
+        msg = resp.choices[0].message
 
-    if msg.tool_calls:
+        if not msg.tool_calls:
+            break
+
+        round_count += 1
+        if verbose:
+            print(f"  [Round {round_count}] LLM 调用了 {len(msg.tool_calls)} 个工具")
+
         messages.append(msg)
         for tc in msg.tool_calls:
             name = tc.function.name
@@ -163,24 +178,34 @@ async def run(client, model: str, question: str,
                 result = f"未知工具：{name}"
             else:
                 # call_tool() = MCP 协议的 tools/call 请求，工具在 Server 子进程内执行
-                call_result = await session.call_tool(name, args)
-                result = "\n".join(b.text for b in call_result.content if hasattr(b, "text"))
+                try:
+                    call_result = await session.call_tool(name, args)
+                    result = "\n".join(b.text for b in call_result.content if hasattr(b, "text"))
+                except Exception as e:
+                    result = f"MCP 工具调用失败（{name}）：{e}"
 
             preview = (result or "")[:120].replace("\n", " ")
             if verbose:
                 print(f"    ↩ [{label}] {preview}{'...' if len(result or '') > 120 else ''}\n")
             messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
 
-        # 第二次请求：模型看到工具结果，生成最终回答
+    # max_rounds 用完但 LLM 还在要工具 → 强制要求基于现有信息回答
+    if round_count >= MAX_ROUNDS and msg and msg.tool_calls:
+        if verbose:
+            print("  ⚠ 达到最大轮次，强制 LLM 基于现有信息回答")
+        messages.append({
+            "role": "user",
+            "content": "请基于现有工具结果直接回答用户问题，不要再调用工具。",
+        })
         resp = client.chat.completions.create(
-            model=model, messages=messages, tools=openai_tools, tool_choice="auto",
+            model=model, messages=messages, tool_choice="none",
         )
         msg = resp.choices[0].message
 
-    answer = msg.content or ""
+    answer = (msg.content or "") if msg else ""
     elapsed = time.time() - t0
     if verbose:
-        print(f"  → [llm] 最终回答（{elapsed:.1f}s）")
+        print(f"  → [llm] 最终回答（{elapsed:.1f}s, {round_count} 轮, {len(tool_call_log)} 次工具调用）")
     return {"answer": answer, "tool_calls": tool_call_log, "elapsed": elapsed}
 
 
