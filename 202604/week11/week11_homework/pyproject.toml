@@ -1,7 +1,7 @@
 [project]
 name = "fincli"
 version = "0.1.0"
-description = "Function Call / MCP / CLI 三方式对比教学项目 —— fincli 命令行"
+description = "Function Call / MCP / CLI 三方式对比项目 —— fincli 命令行"
 requires-python = ">=3.10"
 dependencies = [
     "openai>=1.0.0",
