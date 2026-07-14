@@ -7,16 +7,16 @@ console_script，`pip install -e .` 后即可全局调用：
 
   fincli list-companies
   fincli search --query "营收和净利润" --stock-code 300750 --year 2023 --top-k 3
-  fincli weather --city 宁德
+  fincli geocode --city 宁德
+  fincli weather-by-coords --lat 26.66 --lon 119.55
 
 不想安装也可直接跑：
   python mode_cli/cli/main.py search --query "营收" --stock-code 300750 --year 2023
-  python -m mode_cli.cli.main weather --city 宁德
 
 教学点：
   1. CLI 作为"工具实现层"，本质就是一个能跑的脚本——跟协议无关
   2. 用 pyproject + console_script 把脚本变成 PATH 上的真实命令，是 Python CLI 工具的标准发布方式
-  3. 一个 fincli 含多个子命令（search/list-companies/weather），对应 git 的子命令设计
+  3. 一个 fincli 含多个子命令（search/list-companies/geocode/weather-by-coords），对应 git 的子命令设计
 
 依赖：
   pip install faiss-cpu numpy openai httpx

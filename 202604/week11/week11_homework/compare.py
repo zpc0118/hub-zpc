@@ -106,11 +106,12 @@ def run_compare(questions: list[str], provider: str) -> list[dict]:
     for qi, q in enumerate(questions, 1):
         print(f"\n{'='*70}\nQ{qi}：{q}\n{'='*70}")
         for mode_name, mode_cmd in MODES:
-            print(f"  ▶ {mode_name} ...", end=" ", flush=True)
+            print(f"  ▶ {mode_name:<14} ...", end=" ", flush=True)
             data = run_one(mode_cmd, q, provider)
             s = summarize(data, q)
             status = "✓" if data.get("ok") else "✗"
-            print(f"{status} 工具[{s['tool_count']}] {s['llm_elapsed']}")
+            tools_str = s['tools'][:50]
+            print(f"{status} 工具[{s['tool_count']:>2}] {s['llm_elapsed']:>6}  {tools_str}")
             rows.append({
                 "question": q, "mode": mode_name,
                 **s, "raw_ok": data.get("ok", False),

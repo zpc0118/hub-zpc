@@ -1,11 +1,11 @@
 """
-run_mcp.py — 方式二：MCP Host（连接多 Server，单轮闭环调用）
+run_mcp.py — 方式二：MCP Host（连接多 Server，多轮 ReAct 调用）
 
 教学重点：
   1. 工具来自"协议发现"而非手写：connect_all_servers 一次走完
      stdio_client 建管道 → initialize() 握手 → list_tools() 发现工具
   2. MCP 工具描述要转成 LLM 能懂的 OpenAI tools schema（inputSchema → parameters）
-  3. 单轮闭环代码和 run_function_call.py 几乎一样——差异只在"工具从哪来/怎么执行"
+  3. 多轮 ReAct 循环和 run_function_call.py 几乎一样——差异只在"工具从哪来/怎么执行"
      · Function Call：手写 schema + 直接调后端函数
      · MCP：发现 schema + 通过 call_tool 跨进程调用 Server
   4. AsyncExitStack 统一管理多个 Server 子进程的生命周期
@@ -20,7 +20,7 @@ run_mcp.py — 方式二：MCP Host（连接多 Server，单轮闭环调用）
             DASHSCOPE_API_KEY（Embedding，rag_server 内部用）
 
 MCP 三角关系：
-  Host（本文件）= 连接管理 + 工具路由 + LLM 单轮闭环
+  Host（本文件）= 连接管理 + 工具路由 + LLM 多轮 ReAct
   Client        = ClientSession，每个 Server 一个会话
   Server        = rag_server.py / weather_server.py（子进程，stdio 通信）
 """
@@ -122,7 +122,7 @@ async def connect_all_servers(stack: AsyncExitStack):
     return tool_registry, openai_tools
 
 
-# ── 单轮闭环 ───────────────────────────────────────────────────────────────
+# ── 多轮 ReAct ─────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = (
     "你是一名金融分析助手。回答用户关于A股年报的问题时，必须先调用 search_annual_report 工具检索年报原文，"

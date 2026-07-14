@@ -4,8 +4,8 @@ run_function_call.py — 方式一：Function Call（模型原生函数调用）
 教学重点：
   1. 手写 JSON Schema：每个工具的 name/description/parameters 都要开发者自己写
      ——这是 Function Call 的"接入成本"，schema 写得越清楚，模型调用越准
-  2. 单轮闭环三步：模型输出 tool_call → 宿主执行工具 → 结果以 role=tool 回填 → 模型生成最终回答
-  3. 并行工具调用：模型一次输出多个 tool_call（如同时查年报+查天气），宿主逐个执行后一并回填
+  2. 多轮 ReAct：while 循环直到模型不再调工具，支持跨轮链式调用（如 geocode→get_weather_by_coords）
+  3. 并行工具调用：同一轮内可并行调多个独立工具（如同时查年报+geocode），宿主逐个执行后一并回填
   4. 工具名 → 后端函数的 dispatch 表：业务逻辑（src/）与协议层（本文件）彻底分离
 
 使用方式：
