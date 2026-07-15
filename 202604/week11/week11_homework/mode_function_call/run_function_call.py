@@ -40,8 +40,8 @@ from openai import OpenAI
 # 把项目根目录加入 sys.path，让 src 可 import（直接 python 运行本脚本也能找到）
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.rag_backend import search_annual_report, list_companies  # noqa: E402
-from src.weather_backend import geocode, get_weather_by_coords  # noqa: E402
+from src.rag_backend import search_annual_report, list_companies
+from src.weather_backend import geocode, get_weather_by_coords
 
 # ── LLM 配置 ───────────────────────────────────────────────────────────────
 

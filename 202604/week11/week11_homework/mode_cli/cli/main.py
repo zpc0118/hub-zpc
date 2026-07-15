@@ -30,8 +30,8 @@ from pathlib import Path
 # 让本脚本能 import 项目根的 src/（无论从哪个工作目录 / 是否安装）
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.rag_backend import search_annual_report, list_companies  # noqa: E402
-from src.weather_backend import geocode, get_weather_by_coords  # noqa: E402
+from src.rag_backend import search_annual_report, list_companies
+from src.weather_backend import geocode, get_weather_by_coords
 
 
 def main():

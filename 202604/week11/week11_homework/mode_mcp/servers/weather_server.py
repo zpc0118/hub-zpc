@@ -17,11 +17,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from mcp.server.fastmcp import FastMCP  # noqa: E402
-
+from mcp.server.fastmcp import FastMCP
 # 用 as 别名避免同名 tool 函数遮蔽后端函数导致递归
-from src.weather_backend import geocode as _geocode  # noqa: E402
-from src.weather_backend import get_weather_by_coords as _get_weather_by_coords  # noqa: E402
+from src.weather_backend import geocode as _geocode
+from src.weather_backend import get_weather_by_coords as _get_weather_by_coords
 
 
 def log(msg: str):

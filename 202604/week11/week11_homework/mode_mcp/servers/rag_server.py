@@ -21,10 +21,9 @@ from pathlib import Path
 # 让本脚本能 import 项目根的 src/（子进程 cwd 不一定是项目根）
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from mcp.server.fastmcp import FastMCP  # noqa: E402
-
+from mcp.server.fastmcp import FastMCP
 # 注意：用 as 别名导入后端函数，避免下方同名 tool 函数遮蔽后递归调用自己
-from src.rag_backend import (  # noqa: E402
+from src.rag_backend import (
     search_annual_report as _search_annual_report,
     list_companies as _list_companies,
 )
