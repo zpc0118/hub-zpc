@@ -113,7 +113,8 @@ def _parse_step(text: str) -> dict:
 
 # ── ReAct 核心循环 ─────────────────────────────────────────────────────────────
 
-def run(question: str, max_steps: int = 10, verbose: bool = True) -> Generator[dict, None, None]:
+def run(question: str, max_steps: int = 10, *,
+        messages: list[dict] | None = None) -> Generator[dict, None, None]:
     """
     执行 ReAct 循环，yield 每一步的结构化结果
 
@@ -121,13 +122,20 @@ def run(question: str, max_steps: int = 10, verbose: bool = True) -> Generator[d
       {"step": int, "thought": str, "action": str, "action_input": dict, "observation": str}
     最后一个 yield：
       {"step": int, "thought": str, "type": "final", "answer": str}
+
+    messages 参数：
+      - None：首轮对话，新建 [system_prompt, user_question]
+      - 传入已有 list：在历史后追加 user_question，run() 直接修改该 list
     """
     from tools import TOOLS_MAP
 
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user",   "content": question},
-    ]
+    if messages is None:
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user",   "content": question},
+        ]
+    else:
+        messages.append({"role": "user", "content": question})
 
     for step in range(1, max_steps + 1):
         response = client.chat.completions.create(
@@ -140,6 +148,8 @@ def run(question: str, max_steps: int = 10, verbose: bool = True) -> Generator[d
         parsed = _parse_step(llm_output)
 
         if parsed["type"] == "final":
+            # 将最终回答写入 messages，多轮对话时下一轮可见
+            messages.append({"role": "assistant", "content": llm_output})
             yield {
                 "step":    step,
                 "type":    "final",
@@ -149,6 +159,7 @@ def run(question: str, max_steps: int = 10, verbose: bool = True) -> Generator[d
             return
 
         if parsed["type"] == "unparseable":
+            messages.append({"role": "assistant", "content": llm_output})
             yield {
                 "step":        step,
                 "type":        "error",
@@ -187,6 +198,10 @@ def run(question: str, max_steps: int = 10, verbose: bool = True) -> Generator[d
         })
 
     # 超出最大步数，强制终止
+    messages.append({
+        "role": "assistant",
+        "content": f"（已达最大步数 {max_steps}，未能得出最终答案）",
+    })
     yield {
         "step":   max_steps + 1,
         "type":   "max_steps",

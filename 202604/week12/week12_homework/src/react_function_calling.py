@@ -51,18 +51,26 @@ FC_SYSTEM_PROMPT = """你是一个专业的A股金融分析助手。
 """
 
 
-def run(question: str, max_steps: int = 10) -> Generator[dict, None, None]:
+def run(question: str, max_steps: int = 10, *,
+        messages: list[dict] | None = None) -> Generator[dict, None, None]:
     """
     执行 Function Calling 版 ReAct 循环，yield 每一步结构化结果
 
     格式与 react_manual.run() 保持一致，便于 evaluate.py 统一对比
+
+    messages 参数：
+      - None：首轮对话，新建 [system_prompt, user_question]
+      - 传入已有 list：在历史后追加 user_question，run() 直接修改该 list
     """
     from tools import TOOLS_MAP, TOOLS_SCHEMA
 
-    messages = [
-        {"role": "system", "content": FC_SYSTEM_PROMPT},
-        {"role": "user",   "content": question},
-    ]
+    if messages is None:
+        messages = [
+            {"role": "system", "content": FC_SYSTEM_PROMPT},
+            {"role": "user",   "content": question},
+        ]
+    else:
+        messages.append({"role": "user", "content": question})
 
     for step in range(1, max_steps + 1):
         response = client.chat.completions.create(
@@ -77,6 +85,8 @@ def run(question: str, max_steps: int = 10) -> Generator[dict, None, None]:
 
         # 模型决定直接回答（无工具调用）
         if reason == "stop" or not msg.tool_calls:
+            # 将最终回答写入 messages，多轮对话时下一轮可见
+            messages.append(msg)
             yield {
                 "step":   step,
                 "type":   "final",
@@ -120,6 +130,10 @@ def run(question: str, max_steps: int = 10) -> Generator[dict, None, None]:
                 "content":      str(observation),
             })
 
+    messages.append({
+        "role": "assistant",
+        "content": f"（已达最大步数 {max_steps}，未能得出最终答案）",
+    })
     yield {
         "step":   max_steps + 1,
         "type":   "max_steps",
