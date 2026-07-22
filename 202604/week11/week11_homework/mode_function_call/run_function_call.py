@@ -290,6 +290,8 @@ def main():
     parser.add_argument("--json", action="store_true", help="输出 JSON（供 compare.py 解析）")
     args = parser.parse_args()
 
+    print(f"args: {args}")
+
     client, model = build_client(args.provider)
     if not args.json:
         print(f"[Function Call] provider={args.provider} model={model}\n")
